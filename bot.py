@@ -23,13 +23,14 @@ logger = logging.getLogger(__name__)
 # Bot token
 TOKEN = "7538731330:AAFSOY0g0vSaEGaFV1zat2Ll-6Aeh_dv49o"
 
-# Lock file path
-LOCK_FILE = "bot.lock"
-
 # Get temp directory from environment variable or use system temp
 TEMP_DIR = os.getenv('TEMP_DIR', tempfile.gettempdir())
 os.makedirs(TEMP_DIR, exist_ok=True)
 logger.info(f"Using temporary directory: {TEMP_DIR}")
+
+# Lock file path (now in temp directory)
+LOCK_FILE = os.path.join(TEMP_DIR, "bot.lock")
+logger.info(f"Using lock file: {LOCK_FILE}")
 
 # Video aspect ratio settings
 VIDEO_RATIO_WIDTH = 5    # Target video aspect ratio width
@@ -532,7 +533,7 @@ def add_text_overlay(input_path: str, text: str) -> str:
         escaped_text = formatted_text.replace("'", "'\\\\\\''").replace(':', '\\:').replace('=', '\\=')
         
         # Construct FFmpeg command with text overlay
-        filter_complex = f"drawtext=text='{escaped_text}':fontfile=/System/Library/Fonts/HelveticaNeue.ttc:fontsize=45:fontcolor=#0F1419:line_spacing=8:x={x_position}:y={y_position}:box=0"
+        filter_complex = f"drawtext=text='{escaped_text}':fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:fontsize=45:fontcolor=#0F1419:line_spacing=8:x={x_position}:y={y_position}:box=0"
         
         cmd = [
             'ffmpeg',

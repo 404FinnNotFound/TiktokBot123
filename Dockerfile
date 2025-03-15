@@ -10,6 +10,7 @@ RUN apt-get update && \
     libswscale-dev \
     libavfilter-dev \
     x264 \
+    fonts-dejavu \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
