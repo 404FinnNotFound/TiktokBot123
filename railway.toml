@@ -1,8 +1,8 @@
 [build]
-builder = "ubuntu-22.04"
+builder = "nixpacks"
 
 [deploy]
 startCommand = "bash start.sh"
 
 [build.env]
-NIXPACKS_PKGS = "ffmpeg" 
+NIXPACKS_PKGS = "ffmpeg python3" 
