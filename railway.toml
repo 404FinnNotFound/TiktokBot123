@@ -1,0 +1,10 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "python bot.py"
+healthcheckPath = "/"
+healthcheckTimeout = 100
+
+[build.env]
+NIXPACKS_PKGS = "ffmpeg" 
