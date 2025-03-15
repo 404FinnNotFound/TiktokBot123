@@ -24,6 +24,11 @@ TOKEN = "7538731330:AAFSOY0g0vSaEGaFV1zat2Ll-6Aeh_dv49o"
 # Lock file path
 LOCK_FILE = "bot.lock"
 
+# Get temp directory from environment variable or use system temp
+TEMP_DIR = os.getenv('TEMP_DIR', tempfile.gettempdir())
+os.makedirs(TEMP_DIR, exist_ok=True)
+logger.info(f"Using temporary directory: {TEMP_DIR}")
+
 # Video aspect ratio settings
 VIDEO_RATIO_WIDTH = 5    # Target video aspect ratio width
 VIDEO_RATIO_HEIGHT = 7   # Target video aspect ratio height
@@ -76,7 +81,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def crop_video(input_path: str) -> str:
     """Crop video to target aspect ratio using FFmpeg."""
-    output_path = os.path.join(os.path.dirname(input_path), "cropped_video.mp4")
+    output_path = os.path.join(TEMP_DIR, "cropped_video.mp4")
     
     try:
         # Get video dimensions using ffprobe
@@ -139,7 +144,7 @@ def crop_video(input_path: str) -> str:
 
 def add_border(input_path: str) -> str:
     """Add white borders to make video 9:16 while maintaining 5:7 content ratio."""
-    output_path = os.path.join(os.path.dirname(input_path), "bordered_video.mp4")
+    output_path = os.path.join(TEMP_DIR, "bordered_video.mp4")
     
     try:
         # Get video dimensions using ffprobe
@@ -245,7 +250,7 @@ def check_metadata(file_path: str) -> dict:
 
 def modify_metadata(input_path: str, metadata: dict) -> str:
     """Modify video metadata using FFmpeg."""
-    output_path = os.path.join(os.path.dirname(input_path), "metadata_video.mp4")
+    output_path = os.path.join(TEMP_DIR, "metadata_video.mp4")
     
     try:
         # Prepare metadata arguments
@@ -358,99 +363,103 @@ def process_video_metadata(video_path: str, info: dict) -> str:
 
 def download_tiktok_no_border(url: str) -> str:
     """Download TikTok video without adding borders."""
-    temp_dir = tempfile.mkdtemp()
-    output_template = os.path.join(temp_dir, "video.%(ext)s")
-    
-    ydl_opts = {
-        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-        'outtmpl': output_template,
-        'quiet': True,
-        'no_warnings': True,
-        'socket_timeout': 30,
-        'retries': 5,
-        'fragment_retries': 5,
-        'file_access_retries': 5,
-        'extractor_args': {
-            'TikTok': {
-                'download_without_watermark': True,
-                'no_watermark': True,
-            }
-        },
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'Referer': 'https://www.tiktok.com/',
-        },
-        'postprocessors': [{
-            'key': 'FFmpegVideoConvertor',
-            'preferedformat': 'mp4',
-        }],
-    }
-    
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        try:
-            # Extract video info and download
-            info = ydl.extract_info(url, download=True)
-            video_path = os.path.join(temp_dir, f"video.mp4")
-            
-            # Process metadata
-            return process_video_metadata(video_path, info)
-            
-        except Exception as e:
-            logger.error(f"Download error: {str(e)}")
-            raise Exception(f"Failed to download video (try again): {str(e)}")
+    try:
+        # Configure yt-dlp options
+        ydl_opts = {
+            'format': 'best',
+            'outtmpl': os.path.join(TEMP_DIR, '%(id)s.%(ext)s'),
+            'quiet': True,
+            'no_warnings': True,
+            'socket_timeout': 30,
+            'retries': 5,
+            'fragment_retries': 5,
+            'file_access_retries': 5,
+            'extractor_args': {
+                'TikTok': {
+                    'download_without_watermark': True,
+                    'no_watermark': True,
+                }
+            },
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Referer': 'https://www.tiktok.com/',
+            },
+            'postprocessors': [{
+                'key': 'FFmpegVideoConvertor',
+                'preferedformat': 'mp4',
+            }],
+        }
+        
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            try:
+                # Extract video info and download
+                info = ydl.extract_info(url, download=True)
+                video_path = os.path.join(TEMP_DIR, f"video.mp4")
+                
+                # Process metadata
+                return process_video_metadata(video_path, info)
+                
+            except Exception as e:
+                logger.error(f"Download error: {str(e)}")
+                raise Exception(f"Failed to download video (try again): {str(e)}")
+    except Exception as e:
+        logger.error(f"Error downloading video: {e}")
+        raise Exception("Failed to download video")
 
 def download_tiktok(url: str) -> str:
-    """Download TikTok video using yt-dlp."""
-    temp_dir = tempfile.mkdtemp()
-    output_template = os.path.join(temp_dir, "video.%(ext)s")
-    
-    ydl_opts = {
-        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-        'outtmpl': output_template,
-        'quiet': True,
-        'no_warnings': True,
-        'socket_timeout': 30,
-        'retries': 5,
-        'fragment_retries': 5,
-        'file_access_retries': 5,
-        'extractor_args': {
-            'TikTok': {
-                'download_without_watermark': True,
-                'no_watermark': True,
-            }
-        },
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'Referer': 'https://www.tiktok.com/',
-        },
-        'postprocessors': [{
-            'key': 'FFmpegVideoConvertor',
-            'preferedformat': 'mp4',
-        }],
-    }
-    
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        try:
-            # Extract video info and download
-            info = ydl.extract_info(url, download=True)
-            downloaded_path = os.path.join(temp_dir, f"video.mp4")
-            
-            # Process metadata
-            processed_path = process_video_metadata(downloaded_path, info)
-            
-            # First crop to 5:7 ratio
-            cropped_path = crop_video(processed_path)
-            
-            # Then add white borders to make it 9:16
-            return add_border(cropped_path)
-            
-        except Exception as e:
-            logger.error(f"Download error: {str(e)}")
-            raise Exception(f"Failed to download video (try again): {str(e)}")
+    """Download and process TikTok video."""
+    try:
+        # Configure yt-dlp options
+        ydl_opts = {
+            'format': 'best',
+            'outtmpl': os.path.join(TEMP_DIR, '%(id)s.%(ext)s'),
+            'quiet': True,
+            'no_warnings': True,
+            'socket_timeout': 30,
+            'retries': 5,
+            'fragment_retries': 5,
+            'file_access_retries': 5,
+            'extractor_args': {
+                'TikTok': {
+                    'download_without_watermark': True,
+                    'no_watermark': True,
+                }
+            },
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Referer': 'https://www.tiktok.com/',
+            },
+            'postprocessors': [{
+                'key': 'FFmpegVideoConvertor',
+                'preferedformat': 'mp4',
+            }],
+        }
+        
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            try:
+                # Extract video info and download
+                info = ydl.extract_info(url, download=True)
+                downloaded_path = os.path.join(TEMP_DIR, f"video.mp4")
+                
+                # Process metadata
+                processed_path = process_video_metadata(downloaded_path, info)
+                
+                # First crop to 5:7 ratio
+                cropped_path = crop_video(processed_path)
+                
+                # Then add white borders to make it 9:16
+                return add_border(cropped_path)
+                
+            except Exception as e:
+                logger.error(f"Download error: {str(e)}")
+                raise Exception(f"Failed to download video (try again): {str(e)}")
+    except Exception as e:
+        logger.error(f"Error downloading video: {e}")
+        raise Exception("Failed to download video")
 
 def add_text_overlay(input_path: str, text: str) -> str:
-    """Add text overlay to the video."""
-    output_path = os.path.join(os.path.dirname(input_path), "text_overlay.mp4")
+    """Add text overlay to video."""
+    output_path = os.path.join(TEMP_DIR, "text_overlay.mp4")
     
     try:
         # Position text at a fixed distance from the top of the frame
