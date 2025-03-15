@@ -5,4 +5,4 @@ builder = "nixpacks"
 startCommand = "bash start.sh"
 
 [build.env]
-NIXPACKS_PKGS = "ffmpeg python3" 
+NIXPACKS_PKGS = "ffmpeg ffprobe python3" 
