@@ -12,6 +12,8 @@ import subprocess
 import json
 from datetime import datetime, timedelta
 import random
+import fcntl
+import sys
 
 # Configure logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -55,23 +57,52 @@ META_FORMAT = "meta_format"
 # Store temporary video paths
 temp_videos: Dict[int, str] = {}
 
-def cleanup():
+def acquire_lock():
+    """Try to acquire the lock file."""
+    try:
+        # Open the lock file
+        lock_fd = os.open(LOCK_FILE, os.O_CREAT | os.O_RDWR)
+        
+        # Try to acquire an exclusive lock
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        
+        # Write PID to lock file
+        os.truncate(lock_fd, 0)
+        os.write(lock_fd, str(os.getpid()).encode())
+        
+        return lock_fd
+    except (IOError, OSError) as e:
+        logger.error(f"Could not acquire lock: {e}")
+        if os.path.exists(LOCK_FILE):
+            try:
+                with open(LOCK_FILE, 'r') as f:
+                    pid = f.read().strip()
+                logger.error(f"Another instance is running with PID: {pid}")
+            except:
+                pass
+        sys.exit(1)
+
+def release_lock(lock_fd):
+    """Release the lock file."""
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        os.close(lock_fd)
+        os.unlink(LOCK_FILE)
+    except Exception as e:
+        logger.error(f"Error releasing lock: {e}")
+
+def cleanup(lock_fd=None):
     """Clean up function to remove lock file on exit."""
     try:
-        if os.path.exists(LOCK_FILE):
-            os.remove(LOCK_FILE)
+        if lock_fd is not None:
+            release_lock(lock_fd)
     except Exception as e:
-        logger.error(f"Error cleaning up lock file: {e}")
+        logger.error(f"Error cleaning up: {e}")
 
 def signal_handler(signum, frame):
     """Handle termination signals."""
     cleanup()
-    exit(0)
-
-# Register cleanup functions
-atexit.register(cleanup)
-signal.signal(signal.SIGINT, signal_handler)
-signal.signal(signal.SIGTERM, signal_handler)
+    sys.exit(0)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send a message when the command /start is issued."""
@@ -235,14 +266,18 @@ def check_metadata(file_path: str) -> dict:
     try:
         cmd = [
             'ffprobe',
-            '-v', 'quiet',
+            '-v', 'error',  # Changed from quiet to error for better error messages
             '-print_format', 'json',
             '-show_format',
             '-show_streams',
             file_path
         ]
         
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            logger.error(f"FFprobe error: {result.stderr}")
+            return {}
+            
         return json.loads(result.stdout)
     except Exception as e:
         logger.error(f"Error checking metadata: {e}")
@@ -339,7 +374,7 @@ def process_video_metadata(video_path: str, info: dict) -> str:
         # Check if metadata can be modified
         current_metadata = check_metadata(video_path)
         if not current_metadata:
-            logger.warning("Could not read current metadata")
+            logger.warning("Could not read current metadata, continuing without metadata modification")
             return video_path
         
         # Generate authentic-looking metadata
@@ -351,7 +386,7 @@ def process_video_metadata(video_path: str, info: dict) -> str:
         # Verify changes
         updated_metadata = check_metadata(processed_path)
         if not updated_metadata:
-            logger.warning("Could not verify metadata changes")
+            logger.warning("Could not verify metadata changes, continuing with processed video")
             return processed_path
         
         logger.info("Metadata successfully updated with authentic values")
@@ -359,6 +394,7 @@ def process_video_metadata(video_path: str, info: dict) -> str:
         
     except Exception as e:
         logger.error(f"Error processing metadata: {e}")
+        logger.warning("Continuing without metadata modification")
         return video_path
 
 def download_tiktok_no_border(url: str) -> str:
@@ -719,14 +755,10 @@ async def handle_caption(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 def main():
     """Start the bot."""
+    lock_fd = None
     try:
-        # Check for existing lock file
-        if os.path.exists(LOCK_FILE):
-            os.remove(LOCK_FILE)
-        
-        # Create lock file
-        with open(LOCK_FILE, 'w') as f:
-            f.write(str(os.getpid()))
+        # Acquire lock
+        lock_fd = acquire_lock()
         
         # Create application
         application = (
@@ -738,6 +770,11 @@ def main():
             .pool_timeout(30.0)
             .build()
         )
+        
+        # Register cleanup with lock_fd
+        atexit.register(cleanup, lock_fd)
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
         
         # Create conversation handler
         conv_handler = ConversationHandler(
@@ -765,10 +802,10 @@ def main():
         )
         
     except Exception as e:
-        print(f"Error starting bot: {e}")
-        cleanup()
+        logger.error(f"Error starting bot: {e}")
+        cleanup(lock_fd)
     finally:
-        cleanup()
+        cleanup(lock_fd)
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle errors in the telegram-python-bot library."""
