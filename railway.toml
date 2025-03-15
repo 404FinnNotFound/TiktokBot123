@@ -1,8 +1,8 @@
 [build]
-builder = "nixpacks"
+builder = "ubuntu-22.04"
 
 [deploy]
-startCommand = "python bot.py"
+startCommand = "bash start.sh"
 
 [build.env]
 NIXPACKS_PKGS = "ffmpeg" 
