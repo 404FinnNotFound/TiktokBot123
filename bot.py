@@ -12,6 +12,8 @@ import subprocess
 import json
 from datetime import datetime, timedelta
 import random
+import shutil
+from pathlib import Path
 
 # Configure logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -50,7 +52,8 @@ META_FORMAT = "meta_format"
 # Store temporary video paths
 temp_videos: Dict[int, str] = {}
 
-FFMPEG_PATH = 'ffmpeg'  # Default path, will be updated by ensure_ffmpeg
+FFMPEG_PATH = None  # Will be set by ensure_ffmpeg
+FFPROBE_PATH = None  # Will be set by ensure_ffmpeg
 
 def cleanup():
     """Clean up function to remove lock file on exit."""
@@ -77,48 +80,67 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 def ensure_ffmpeg():
-    """Ensure ffmpeg is installed and accessible."""
-    global FFMPEG_PATH  # Allow updating the global FFmpeg path
+    """Ensure ffmpeg and ffprobe are installed and accessible."""
+    global FFMPEG_PATH, FFPROBE_PATH
+    
     try:
-        # Try multiple possible paths for ffmpeg
-        ffmpeg_paths = [
-            'ffmpeg',  # Default PATH
-            '/nix/var/nix/profiles/default/bin/ffmpeg',  # Nix default path
-            '/usr/bin/ffmpeg',  # Common Linux path
-            '/usr/local/bin/ffmpeg'  # Common Unix path
+        # Try to find ffmpeg and ffprobe using shutil.which first
+        ffmpeg = shutil.which('ffmpeg')
+        ffprobe = shutil.which('ffprobe')
+        
+        if ffmpeg and ffprobe:
+            FFMPEG_PATH = ffmpeg
+            FFPROBE_PATH = ffprobe
+            logger.info(f"Found FFmpeg at {FFMPEG_PATH}")
+            logger.info(f"Found FFprobe at {FFPROBE_PATH}")
+            return
+        
+        # Additional paths to check
+        possible_paths = [
+            '/nix/var/nix/profiles/default/bin',
+            '/opt/ffmpeg/bin',
+            '/usr/local/bin',
+            '/usr/bin',
+            '/bin'
         ]
         
-        for ffmpeg_path in ffmpeg_paths:
-            try:
-                result = subprocess.run([ffmpeg_path, '-version'], 
+        # Check each path
+        for base_path in possible_paths:
+            ffmpeg_path = Path(base_path) / 'ffmpeg'
+            ffprobe_path = Path(base_path) / 'ffprobe'
+            
+            if ffmpeg_path.exists() and ffprobe_path.exists():
+                FFMPEG_PATH = str(ffmpeg_path)
+                FFPROBE_PATH = str(ffprobe_path)
+                logger.info(f"Found FFmpeg at {FFMPEG_PATH}")
+                logger.info(f"Found FFprobe at {FFPROBE_PATH}")
+                
+                # Test FFmpeg
+                result = subprocess.run([FFMPEG_PATH, '-version'], 
                                      check=True, 
                                      capture_output=True, 
                                      text=True)
-                logger.info(f"FFmpeg found at {ffmpeg_path}")
                 logger.info(f"FFmpeg version: {result.stdout.splitlines()[0]}")
-                FFMPEG_PATH = ffmpeg_path  # Update the global path
-                return  # FFmpeg found and working
-            except (subprocess.CalledProcessError, FileNotFoundError):
-                continue
+                return
         
         # If we get here, no FFmpeg was found
-        logger.error("FFmpeg not found in any standard location")
-        raise RuntimeError("FFmpeg is required but not found in any standard location")
+        raise RuntimeError("FFmpeg/FFprobe not found in any standard location")
         
     except Exception as e:
         logger.error(f"Error checking FFmpeg: {e}")
-        # Don't raise here, let the bot try to start anyway
-        # FFmpeg might become available later or be in a different location
-        logger.warning("Continuing without FFmpeg verification...")
+        raise  # Re-raise the error as FFmpeg is required
 
 def crop_video(input_path: str) -> str:
     """Crop video to target aspect ratio using FFmpeg."""
+    if not FFMPEG_PATH or not FFPROBE_PATH:
+        raise RuntimeError("FFmpeg/FFprobe paths not set")
+        
     output_path = os.path.join(os.path.dirname(input_path), "cropped_video.mp4")
     
     try:
         # Get video dimensions using ffprobe
         probe_cmd = [
-            FFMPEG_PATH.replace('ffmpeg', 'ffprobe'),  # Use the same path but with ffprobe
+            FFPROBE_PATH,
             '-v', 'error',
             '-select_streams', 'v:0',
             '-show_entries', 'stream=width,height',
@@ -152,11 +174,11 @@ def crop_video(input_path: str) -> str:
         
         # Construct FFmpeg command with crop
         cmd = [
-            FFMPEG_PATH,  # Use the global FFmpeg path
+            FFMPEG_PATH,
             '-i', input_path,
             '-vf', f'crop={new_width}:{new_height}:{x_offset}:{y_offset}',
-            '-c:a', 'copy',  # Copy audio stream without re-encoding
-            '-y',  # Overwrite output file if it exists
+            '-c:a', 'copy',
+            '-y',
             output_path
         ]
         
