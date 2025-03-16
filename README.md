@@ -42,12 +42,12 @@ This bot downloads TikTok videos, processes them to a specific format, adds capt
 
 2. In Telegram, send a message to the bot in the following format:
    ```
-   <TikTok URL> | Your caption here
+   <TikTok URL> 
    ```
 
    Example:
    ```
-   https://www.tiktok.com/@user/video/1234567890 | This is my caption
+   https://www.tiktok.com/@user/video/1234567890 
    ```
 
 3. The bot will process the video and send it back to you.
