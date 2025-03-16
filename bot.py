@@ -19,7 +19,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 # Bot token
-TOKEN = "7538731330:AAFSOY0g0vSaEGaFV1zat2Ll-6Aeh_dv49o"
+TOKEN = os.getenv("BOT_TOKEN", "7538731330:AAFSOY0g0vSaEGaFV1zat2Ll-6Aeh_dv49o")
 
 # Lock file path
 LOCK_FILE = "bot.lock"
@@ -777,6 +777,23 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if update and update.effective_message:
         error_text = "Sorry, an error occurred while processing your request."
         await update.effective_message.reply_text(error_text)
+
+# Ensure required system packages are installed
+def ensure_ffmpeg():
+    """Ensure ffmpeg is installed."""
+    try:
+        subprocess.run(['ffmpeg', '-version'], check=True, capture_output=True)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        try:
+            # Install ffmpeg on Railway
+            subprocess.run(['apt-get', 'update'], check=True)
+            subprocess.run(['apt-get', 'install', '-y', 'ffmpeg'], check=True)
+        except Exception as e:
+            logger.error(f"Failed to install ffmpeg: {e}")
+            raise
+
+# Call ensure_ffmpeg at startup
+ensure_ffmpeg()
 
 if __name__ == '__main__':
     main() 

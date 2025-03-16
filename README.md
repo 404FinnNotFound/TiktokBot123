@@ -1,67 +1,63 @@
 # TikTok Video Processing Telegram Bot
 
-This bot downloads TikTok videos, processes them to a specific format, adds captions, and sends them back to users via Telegram.
+A Telegram bot that downloads TikTok videos without watermarks, adds custom captions, and processes them for optimal viewing.
 
 ## Features
 
-- Downloads TikTok videos in best quality using yt-dlp
-- Crops videos to 5:7 aspect ratio
-- Places videos on a 9:16 white background
-- Adds user-provided captions using Chirp font
-- Handles multiple requests efficiently
-- Cleans up temporary files automatically
+- Downloads TikTok videos without watermarks
+- Adds custom text captions to videos
+- Processes videos to optimal dimensions
+- Maintains authentic video metadata
+- Handles long captions with automatic line breaks
 
-## Requirements
+## Deployment on Railway
 
-- Python 3.8 or higher
-- FFmpeg installed on your system
-- Chirp font installed on your system
+1. Fork this repository to your GitHub account
+2. Create a new project on [Railway](https://railway.app/)
+3. Connect your GitHub repository to Railway
+4. Add the following environment variable in Railway:
+   - `BOT_TOKEN`: Your Telegram bot token from [@BotFather](https://t.me/BotFather)
 
-## Installation
+The bot will automatically deploy and start running on Railway.
 
-1. Install FFmpeg:
-   - macOS: `brew install ffmpeg`
-   - Ubuntu: `sudo apt-get install ffmpeg`
-   - Windows: Download from [FFmpeg website](https://ffmpeg.org/download.html)
+## Local Development
 
-2. Install the Chirp font:
-   - Download from [Chirp font website](https://chirp.twitter.com/)
-   - Install it on your system
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/telegram-bot.git
+cd telegram-bot
+```
 
-3. Install Python dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+2. Create a virtual environment and install dependencies:
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+3. Create a `.env` file with your bot token:
+```
+BOT_TOKEN=your_bot_token_here
+```
+
+4. Run the bot:
+```bash
+python bot.py
+```
 
 ## Usage
 
-1. Start the bot:
-   ```bash
-   python bot.py
-   ```
+1. Start a chat with your bot on Telegram
+2. Send a TikTok video URL to the bot
+3. Add an optional caption text
+4. The bot will process and return the video with your caption
 
-2. In Telegram, send a message to the bot in the following format:
-   ```
-   <TikTok URL> 
-   ```
+## Requirements
 
-   Example:
-   ```
-   https://www.tiktok.com/@user/video/1234567890 
-   ```
+- Python 3.11.7
+- FFmpeg
+- Dependencies listed in requirements.txt
 
-3. The bot will process the video and send it back to you.
+## License
 
-## Error Handling
-
-The bot includes error handling for:
-- Invalid TikTok URLs
-- Failed downloads
-- Processing errors
-- Invalid message formats
-
-## Notes
-
-- Videos are processed with a 5:7 aspect ratio and placed on a 9:16 white background
-- Captions are added above the video in black Chirp font
-- All temporary files are automatically cleaned up after processing 
+MIT License 
