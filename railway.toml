@@ -7,14 +7,13 @@ restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 10
 
 [variables]
-PYTHON_VERSION = "3.11.7"
+NIXPACKS_PYTHON_VERSION = "3.11.7"
 
 [phases.setup]
-nixPkgs = ["ffmpeg-full", "python311"]
-aptPkgs = ["python3-pip", "python3-dev", "build-essential"]
+nixPkgs = [
+    "ffmpeg-full",
+    "python311"
+]
 
-[phases.install]
-cmds = ["pip3 install -r requirements.txt"]
-
-[env]
-PATH = "/nix/var/nix/profiles/default/bin:/usr/local/bin:/usr/bin:/bin" 
+[phases.setup.env]
+PATH = "/nix/var/nix/profiles/default/bin:/bin:/usr/bin:/usr/local/bin" 

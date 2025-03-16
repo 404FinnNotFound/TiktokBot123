@@ -12,8 +12,6 @@ import subprocess
 import json
 from datetime import datetime, timedelta
 import random
-import shutil
-import platform
 
 # Configure logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -52,9 +50,7 @@ META_FORMAT = "meta_format"
 # Store temporary video paths
 temp_videos: Dict[int, str] = {}
 
-# Update the FFMPEG_PATH definition
-FFMPEG_PATH = None  # Will be set by ensure_ffmpeg()
-FFPROBE_PATH = None  # Will be set by ensure_ffmpeg()
+FFMPEG_PATH = 'ffmpeg'  # Default path, will be updated by ensure_ffmpeg
 
 def cleanup():
     """Clean up function to remove lock file on exit."""
@@ -81,69 +77,39 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 def ensure_ffmpeg():
-    """Ensure ffmpeg and ffprobe are installed and accessible."""
-    global FFMPEG_PATH, FFPROBE_PATH
-    
+    """Ensure ffmpeg is installed and accessible."""
+    global FFMPEG_PATH  # Allow updating the global FFmpeg path
     try:
-        # First try to find ffmpeg in PATH using shutil
-        ffmpeg_path = shutil.which('ffmpeg')
-        ffprobe_path = shutil.which('ffprobe')
-        
-        if ffmpeg_path and ffprobe_path:
-            # Test if the found paths work
-            subprocess.run([ffmpeg_path, '-version'], check=True, capture_output=True, text=True)
-            subprocess.run([ffprobe_path, '-version'], check=True, capture_output=True, text=True)
-            FFMPEG_PATH = ffmpeg_path
-            FFPROBE_PATH = ffprobe_path
-            logger.info(f"Found FFmpeg at {FFMPEG_PATH}")
-            logger.info(f"Found FFprobe at {FFPROBE_PATH}")
-            return
-            
-        # If not found in PATH, try common locations
-        common_paths = [
-            '/usr/bin',
-            '/usr/local/bin',
-            '/opt/homebrew/bin',  # Common on macOS
-            '/nix/var/nix/profiles/default/bin',  # Nix
-            '/usr/lib/nix/profiles/default/bin',  # Another Nix location
+        # Try multiple possible paths for ffmpeg
+        ffmpeg_paths = [
+            'ffmpeg',  # Default PATH
+            '/nix/var/nix/profiles/default/bin/ffmpeg',  # Nix default path
+            '/usr/bin/ffmpeg',  # Common Linux path
+            '/usr/local/bin/ffmpeg'  # Common Unix path
         ]
         
-        # On Windows, also check Program Files
-        if platform.system() == 'Windows':
-            program_files = os.environ.get('PROGRAMFILES', 'C:\\Program Files')
-            common_paths.extend([
-                os.path.join(program_files, 'FFmpeg', 'bin'),
-                os.path.join(program_files, 'FFmpeg')
-            ])
+        for ffmpeg_path in ffmpeg_paths:
+            try:
+                result = subprocess.run([ffmpeg_path, '-version'], 
+                                     check=True, 
+                                     capture_output=True, 
+                                     text=True)
+                logger.info(f"FFmpeg found at {ffmpeg_path}")
+                logger.info(f"FFmpeg version: {result.stdout.splitlines()[0]}")
+                FFMPEG_PATH = ffmpeg_path  # Update the global path
+                return  # FFmpeg found and working
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                continue
         
-        for base_path in common_paths:
-            ffmpeg_test = os.path.join(base_path, 'ffmpeg')
-            ffprobe_test = os.path.join(base_path, 'ffprobe')
-            
-            if platform.system() == 'Windows':
-                ffmpeg_test += '.exe'
-                ffprobe_test += '.exe'
-            
-            if os.path.isfile(ffmpeg_test) and os.path.isfile(ffprobe_test):
-                try:
-                    # Test if the executables work
-                    subprocess.run([ffmpeg_test, '-version'], check=True, capture_output=True, text=True)
-                    subprocess.run([ffprobe_test, '-version'], check=True, capture_output=True, text=True)
-                    FFMPEG_PATH = ffmpeg_test
-                    FFPROBE_PATH = ffprobe_test
-                    logger.info(f"Found FFmpeg at {FFMPEG_PATH}")
-                    logger.info(f"Found FFprobe at {FFPROBE_PATH}")
-                    return
-                except (subprocess.SubprocessError, OSError):
-                    continue
-        
-        # If we get here, no working FFmpeg installation was found
-        raise RuntimeError("FFmpeg/FFprobe not found in any standard location")
+        # If we get here, no FFmpeg was found
+        logger.error("FFmpeg not found in any standard location")
+        raise RuntimeError("FFmpeg is required but not found in any standard location")
         
     except Exception as e:
         logger.error(f"Error checking FFmpeg: {e}")
-        # In production, we should fail if FFmpeg is not available
-        raise RuntimeError("FFmpeg is required but not found")
+        # Don't raise here, let the bot try to start anyway
+        # FFmpeg might become available later or be in a different location
+        logger.warning("Continuing without FFmpeg verification...")
 
 def crop_video(input_path: str) -> str:
     """Crop video to target aspect ratio using FFmpeg."""
@@ -152,7 +118,7 @@ def crop_video(input_path: str) -> str:
     try:
         # Get video dimensions using ffprobe
         probe_cmd = [
-            FFPROBE_PATH,
+            FFMPEG_PATH.replace('ffmpeg', 'ffprobe'),  # Use the same path but with ffprobe
             '-v', 'error',
             '-select_streams', 'v:0',
             '-show_entries', 'stream=width,height',
@@ -186,7 +152,7 @@ def crop_video(input_path: str) -> str:
         
         # Construct FFmpeg command with crop
         cmd = [
-            FFMPEG_PATH,
+            FFMPEG_PATH,  # Use the global FFmpeg path
             '-i', input_path,
             '-vf', f'crop={new_width}:{new_height}:{x_offset}:{y_offset}',
             '-c:a', 'copy',  # Copy audio stream without re-encoding
@@ -215,7 +181,7 @@ def add_border(input_path: str) -> str:
     try:
         # Get video dimensions using ffprobe
         probe_cmd = [
-            FFPROBE_PATH,
+            'ffprobe',
             '-v', 'error',
             '-select_streams', 'v:0',
             '-show_entries', 'stream=width,height',
@@ -274,7 +240,7 @@ def add_border(input_path: str) -> str:
         logger.info(f"Final FFmpeg filter: {','.join(filter_complex)}")
         
         cmd = [
-            FFMPEG_PATH,
+            'ffmpeg',
             '-i', input_path,
             '-vf', ','.join(filter_complex),
             '-c:a', 'copy',
@@ -300,7 +266,7 @@ def check_metadata(file_path: str) -> dict:
     """Check video metadata using FFprobe."""
     try:
         cmd = [
-            FFPROBE_PATH,
+            'ffprobe',
             '-v', 'quiet',
             '-print_format', 'json',
             '-show_format',
@@ -325,7 +291,7 @@ def modify_metadata(input_path: str, metadata: dict) -> str:
             metadata_args.extend(['-metadata', f'{key}={value}'])
         
         cmd = [
-            FFMPEG_PATH,
+            'ffmpeg',
             '-i', input_path,
             '-c', 'copy'
         ] + metadata_args + [
@@ -561,7 +527,7 @@ def add_text_overlay(input_path: str, text: str) -> str:
         filter_complex = f"drawtext=text='{escaped_text}':fontfile=/System/Library/Fonts/HelveticaNeue.ttc:fontsize=45:fontcolor=#0F1419:line_spacing=8:x={x_position}:y={y_position}:box=0"
         
         cmd = [
-            FFMPEG_PATH,
+            'ffmpeg',
             '-i', input_path,
             '-vf', filter_complex,
             '-c:a', 'copy',
