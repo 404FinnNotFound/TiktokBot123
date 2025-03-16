@@ -7,21 +7,25 @@ restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 10
 
 [variables]
+PYTHON_VERSION = "3.11.7"
 NIXPACKS_PYTHON_VERSION = "3.11.7"
 
 [phases.setup]
 nixPkgs = [
     "ffmpeg-full",
     "python311",
-    "gcc"
+    "gcc",
+    "python311Packages.pip"
 ]
 
 [phases.install]
 cmds = [
-    "python -m pip install --upgrade pip",
-    "pip install -r requirements.txt"
+    "python -m ensurepip --upgrade",
+    "python -m pip install --no-cache-dir --upgrade pip setuptools wheel",
+    "python -m pip install --no-cache-dir -r requirements.txt"
 ]
 
-[phases.setup.env]
+[env]
 PATH = "/nix/var/nix/profiles/default/bin:/bin:/usr/bin:/usr/local/bin"
-LD_LIBRARY_PATH = "/lib:/usr/lib:/usr/local/lib:/nix/var/nix/profiles/default/lib" 
+LD_LIBRARY_PATH = "/lib:/usr/lib:/usr/local/lib:/nix/var/nix/profiles/default/lib"
+PYTHONPATH = "/nix/var/nix/profiles/default/lib/python3.11/site-packages" 
