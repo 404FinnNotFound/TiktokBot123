@@ -12,8 +12,6 @@ import subprocess
 import json
 from datetime import datetime, timedelta
 import random
-import fcntl
-import sys
 
 # Configure logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -23,14 +21,8 @@ logger = logging.getLogger(__name__)
 # Bot token
 TOKEN = "7538731330:AAFSOY0g0vSaEGaFV1zat2Ll-6Aeh_dv49o"
 
-# Get temp directory from environment variable or use system temp
-TEMP_DIR = os.getenv('TEMP_DIR', tempfile.gettempdir())
-os.makedirs(TEMP_DIR, exist_ok=True)
-logger.info(f"Using temporary directory: {TEMP_DIR}")
-
-# Lock file path (now in temp directory)
-LOCK_FILE = os.path.join(TEMP_DIR, "bot.lock")
-logger.info(f"Using lock file: {LOCK_FILE}")
+# Lock file path
+LOCK_FILE = "bot.lock"
 
 # Video aspect ratio settings
 VIDEO_RATIO_WIDTH = 5    # Target video aspect ratio width
@@ -58,52 +50,23 @@ META_FORMAT = "meta_format"
 # Store temporary video paths
 temp_videos: Dict[int, str] = {}
 
-def acquire_lock():
-    """Try to acquire the lock file."""
-    try:
-        # Open the lock file
-        lock_fd = os.open(LOCK_FILE, os.O_CREAT | os.O_RDWR)
-        
-        # Try to acquire an exclusive lock
-        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        
-        # Write PID to lock file
-        os.truncate(lock_fd, 0)
-        os.write(lock_fd, str(os.getpid()).encode())
-        
-        return lock_fd
-    except (IOError, OSError) as e:
-        logger.error(f"Could not acquire lock: {e}")
-        if os.path.exists(LOCK_FILE):
-            try:
-                with open(LOCK_FILE, 'r') as f:
-                    pid = f.read().strip()
-                logger.error(f"Another instance is running with PID: {pid}")
-            except:
-                pass
-        sys.exit(1)
-
-def release_lock(lock_fd):
-    """Release the lock file."""
-    try:
-        fcntl.flock(lock_fd, fcntl.LOCK_UN)
-        os.close(lock_fd)
-        os.unlink(LOCK_FILE)
-    except Exception as e:
-        logger.error(f"Error releasing lock: {e}")
-
-def cleanup(lock_fd=None):
+def cleanup():
     """Clean up function to remove lock file on exit."""
     try:
-        if lock_fd is not None:
-            release_lock(lock_fd)
+        if os.path.exists(LOCK_FILE):
+            os.remove(LOCK_FILE)
     except Exception as e:
-        logger.error(f"Error cleaning up: {e}")
+        logger.error(f"Error cleaning up lock file: {e}")
 
 def signal_handler(signum, frame):
     """Handle termination signals."""
     cleanup()
-    sys.exit(0)
+    exit(0)
+
+# Register cleanup functions
+atexit.register(cleanup)
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send a message when the command /start is issued."""
@@ -113,7 +76,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def crop_video(input_path: str) -> str:
     """Crop video to target aspect ratio using FFmpeg."""
-    output_path = os.path.join(TEMP_DIR, "cropped_video.mp4")
+    output_path = os.path.join(os.path.dirname(input_path), "cropped_video.mp4")
     
     try:
         # Get video dimensions using ffprobe
@@ -176,7 +139,7 @@ def crop_video(input_path: str) -> str:
 
 def add_border(input_path: str) -> str:
     """Add white borders to make video 9:16 while maintaining 5:7 content ratio."""
-    output_path = os.path.join(TEMP_DIR, "bordered_video.mp4")
+    output_path = os.path.join(os.path.dirname(input_path), "bordered_video.mp4")
     
     try:
         # Get video dimensions using ffprobe
@@ -267,18 +230,14 @@ def check_metadata(file_path: str) -> dict:
     try:
         cmd = [
             'ffprobe',
-            '-v', 'error',  # Changed from quiet to error for better error messages
+            '-v', 'quiet',
             '-print_format', 'json',
             '-show_format',
             '-show_streams',
             file_path
         ]
         
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            logger.error(f"FFprobe error: {result.stderr}")
-            return {}
-            
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         return json.loads(result.stdout)
     except Exception as e:
         logger.error(f"Error checking metadata: {e}")
@@ -286,7 +245,7 @@ def check_metadata(file_path: str) -> dict:
 
 def modify_metadata(input_path: str, metadata: dict) -> str:
     """Modify video metadata using FFmpeg."""
-    output_path = os.path.join(TEMP_DIR, "metadata_video.mp4")
+    output_path = os.path.join(os.path.dirname(input_path), "metadata_video.mp4")
     
     try:
         # Prepare metadata arguments
@@ -375,7 +334,7 @@ def process_video_metadata(video_path: str, info: dict) -> str:
         # Check if metadata can be modified
         current_metadata = check_metadata(video_path)
         if not current_metadata:
-            logger.warning("Could not read current metadata, continuing without metadata modification")
+            logger.warning("Could not read current metadata")
             return video_path
         
         # Generate authentic-looking metadata
@@ -387,7 +346,7 @@ def process_video_metadata(video_path: str, info: dict) -> str:
         # Verify changes
         updated_metadata = check_metadata(processed_path)
         if not updated_metadata:
-            logger.warning("Could not verify metadata changes, continuing with processed video")
+            logger.warning("Could not verify metadata changes")
             return processed_path
         
         logger.info("Metadata successfully updated with authentic values")
@@ -395,108 +354,103 @@ def process_video_metadata(video_path: str, info: dict) -> str:
         
     except Exception as e:
         logger.error(f"Error processing metadata: {e}")
-        logger.warning("Continuing without metadata modification")
         return video_path
 
 def download_tiktok_no_border(url: str) -> str:
     """Download TikTok video without adding borders."""
-    try:
-        # Configure yt-dlp options
-        ydl_opts = {
-            'format': 'best',
-            'outtmpl': os.path.join(TEMP_DIR, '%(id)s.%(ext)s'),
-            'quiet': True,
-            'no_warnings': True,
-            'socket_timeout': 30,
-            'retries': 5,
-            'fragment_retries': 5,
-            'file_access_retries': 5,
-            'extractor_args': {
-                'TikTok': {
-                    'download_without_watermark': True,
-                    'no_watermark': True,
-                }
-            },
-            'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                'Referer': 'https://www.tiktok.com/',
-            },
-            'postprocessors': [{
-                'key': 'FFmpegVideoConvertor',
-                'preferedformat': 'mp4',
-            }],
-        }
-        
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            try:
-                # Extract video info and download
-                info = ydl.extract_info(url, download=True)
-                video_path = os.path.join(TEMP_DIR, f"video.mp4")
-                
-                # Process metadata
-                return process_video_metadata(video_path, info)
-                
-            except Exception as e:
-                logger.error(f"Download error: {str(e)}")
-                raise Exception(f"Failed to download video (try again): {str(e)}")
-    except Exception as e:
-        logger.error(f"Error downloading video: {e}")
-        raise Exception("Failed to download video")
+    temp_dir = tempfile.mkdtemp()
+    output_template = os.path.join(temp_dir, "video.%(ext)s")
+    
+    ydl_opts = {
+        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+        'outtmpl': output_template,
+        'quiet': True,
+        'no_warnings': True,
+        'socket_timeout': 30,
+        'retries': 5,
+        'fragment_retries': 5,
+        'file_access_retries': 5,
+        'extractor_args': {
+            'TikTok': {
+                'download_without_watermark': True,
+            }
+        },
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Referer': 'https://www.tiktok.com/',
+            'Cookie': 'tt_webid_v2=randomid',
+        },
+        'postprocessors': [{
+            'key': 'FFmpegVideoConvertor',
+            'preferedformat': 'mp4',
+        }],
+    }
+    
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        try:
+            # Extract video info and download
+            info = ydl.extract_info(url, download=True)
+            video_path = os.path.join(temp_dir, f"video.mp4")
+            
+            # Process metadata
+            return process_video_metadata(video_path, info)
+            
+        except Exception as e:
+            logger.error(f"Download error: {str(e)}")
+            raise Exception(f"Failed to download video (try again): {str(e)}")
 
 def download_tiktok(url: str) -> str:
-    """Download and process TikTok video."""
-    try:
-        # Configure yt-dlp options
-        ydl_opts = {
-            'format': 'best',
-            'outtmpl': os.path.join(TEMP_DIR, '%(id)s.%(ext)s'),
-            'quiet': True,
-            'no_warnings': True,
-            'socket_timeout': 30,
-            'retries': 5,
-            'fragment_retries': 5,
-            'file_access_retries': 5,
-            'extractor_args': {
-                'TikTok': {
-                    'download_without_watermark': True,
-                    'no_watermark': True,
-                }
-            },
-            'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                'Referer': 'https://www.tiktok.com/',
-            },
-            'postprocessors': [{
-                'key': 'FFmpegVideoConvertor',
-                'preferedformat': 'mp4',
-            }],
-        }
-        
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            try:
-                # Extract video info and download
-                info = ydl.extract_info(url, download=True)
-                downloaded_path = os.path.join(TEMP_DIR, f"video.mp4")
-                
-                # Process metadata
-                processed_path = process_video_metadata(downloaded_path, info)
-                
-                # First crop to 5:7 ratio
-                cropped_path = crop_video(processed_path)
-                
-                # Then add white borders to make it 9:16
-                return add_border(cropped_path)
-                
-            except Exception as e:
-                logger.error(f"Download error: {str(e)}")
-                raise Exception(f"Failed to download video (try again): {str(e)}")
-    except Exception as e:
-        logger.error(f"Error downloading video: {e}")
-        raise Exception("Failed to download video")
+    """Download TikTok video using yt-dlp."""
+    temp_dir = tempfile.mkdtemp()
+    output_template = os.path.join(temp_dir, "video.%(ext)s")
+    
+    ydl_opts = {
+        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+        'outtmpl': output_template,
+        'quiet': True,
+        'no_warnings': True,
+        'socket_timeout': 30,
+        'retries': 5,
+        'fragment_retries': 5,
+        'file_access_retries': 5,
+        'extractor_args': {
+            'TikTok': {
+                'download_without_watermark': True,
+            }
+        },
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Referer': 'https://www.tiktok.com/',
+            'Cookie': 'tt_webid_v2=randomid',
+        },
+        'postprocessors': [{
+            'key': 'FFmpegVideoConvertor',
+            'preferedformat': 'mp4',
+        }],
+    }
+    
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        try:
+            # Extract video info and download
+            info = ydl.extract_info(url, download=True)
+            downloaded_path = os.path.join(temp_dir, f"video.mp4")
+            
+            # Process metadata
+            processed_path = process_video_metadata(downloaded_path, info)
+            
+            # First crop to 5:7 ratio
+            cropped_path = crop_video(processed_path)
+            
+            # Then add white borders to make it 9:16
+            return add_border(cropped_path)
+            
+        except Exception as e:
+            logger.error(f"Download error: {str(e)}")
+            raise Exception(f"Failed to download video (try again): {str(e)}")
 
 def add_text_overlay(input_path: str, text: str) -> str:
-    """Add text overlay to video."""
-    output_path = os.path.join(TEMP_DIR, "text_overlay.mp4")
+    """Add text overlay to the video."""
+    output_path = os.path.join(os.path.dirname(input_path), "text_overlay.mp4")
     
     try:
         # Position text at a fixed distance from the top of the frame
@@ -533,7 +487,7 @@ def add_text_overlay(input_path: str, text: str) -> str:
         escaped_text = formatted_text.replace("'", "'\\\\\\''").replace(':', '\\:').replace('=', '\\=')
         
         # Construct FFmpeg command with text overlay
-        filter_complex = f"drawtext=text='{escaped_text}':fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:fontsize=45:fontcolor=#0F1419:line_spacing=8:x={x_position}:y={y_position}:box=0"
+        filter_complex = f"drawtext=text='{escaped_text}':fontfile=/System/Library/Fonts/HelveticaNeue.ttc:fontsize=45:fontcolor=#0F1419:line_spacing=8:x={x_position}:y={y_position}:box=0"
         
         cmd = [
             'ffmpeg',
@@ -756,10 +710,14 @@ async def handle_caption(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 def main():
     """Start the bot."""
-    lock_fd = None
     try:
-        # Acquire lock
-        lock_fd = acquire_lock()
+        # Check for existing lock file
+        if os.path.exists(LOCK_FILE):
+            os.remove(LOCK_FILE)
+        
+        # Create lock file
+        with open(LOCK_FILE, 'w') as f:
+            f.write(str(os.getpid()))
         
         # Create application
         application = (
@@ -771,11 +729,6 @@ def main():
             .pool_timeout(30.0)
             .build()
         )
-        
-        # Register cleanup with lock_fd
-        atexit.register(cleanup, lock_fd)
-        signal.signal(signal.SIGINT, signal_handler)
-        signal.signal(signal.SIGTERM, signal_handler)
         
         # Create conversation handler
         conv_handler = ConversationHandler(
@@ -803,10 +756,10 @@ def main():
         )
         
     except Exception as e:
-        logger.error(f"Error starting bot: {e}")
-        cleanup(lock_fd)
+        print(f"Error starting bot: {e}")
+        cleanup()
     finally:
-        cleanup(lock_fd)
+        cleanup()
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle errors in the telegram-python-bot library."""

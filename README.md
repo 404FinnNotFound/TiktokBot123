@@ -1,6 +1,6 @@
-# TikTok Video Bot
+# TikTok Video Processing Telegram Bot
 
-A Telegram bot that downloads and processes TikTok videos.
+This bot downloads TikTok videos, processes them to a specific format, adds captions, and sends them back to users via Telegram.
 
 ## Features
 
@@ -13,40 +13,25 @@ A Telegram bot that downloads and processes TikTok videos.
 
 ## Requirements
 
-- Python 3.11+
-- FFmpeg (required for video processing)
-- Python packages listed in requirements.txt
+- Python 3.8 or higher
+- FFmpeg installed on your system
+- Chirp font installed on your system
 
-## Local Development
+## Installation
 
 1. Install FFmpeg:
-   - On macOS: `brew install ffmpeg`
-   - On Ubuntu/Debian: `sudo apt-get install ffmpeg`
-   - On Windows: Download from [FFmpeg website](https://ffmpeg.org/download.html)
+   - macOS: `brew install ffmpeg`
+   - Ubuntu: `sudo apt-get install ffmpeg`
+   - Windows: Download from [FFmpeg website](https://ffmpeg.org/download.html)
 
-2. Install Python dependencies:
-```bash
-pip install -r requirements.txt
-```
+2. Install the Chirp font:
+   - Download from [Chirp font website](https://chirp.twitter.com/)
+   - Install it on your system
 
-3. Set up environment variables:
-```bash
-export BOT_TOKEN=your_telegram_bot_token
-```
-
-4. Run the bot:
-```bash
-python bot.py
-```
-
-## Deployment
-
-This bot is configured for deployment on Railway.app. The following files are included:
-- `Procfile` - Specifies the worker process
-- `runtime.txt` - Specifies Python version
-- `railway.toml` - Configures FFmpeg installation and other deployment settings
-
-Make sure to set the `BOT_TOKEN` environment variable in your Railway project settings.
+3. Install Python dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
 ## Usage
 
