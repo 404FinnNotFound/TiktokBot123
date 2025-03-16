@@ -18,7 +18,18 @@ A Telegram bot that downloads TikTok videos without watermarks, adds custom capt
 4. Add the following environment variable in Railway:
    - `BOT_TOKEN`: Your Telegram bot token from [@BotFather](https://t.me/BotFather)
 
-The bot will automatically deploy and start running on Railway.
+The bot will automatically deploy and start running on Railway. The deployment process:
+- Uses Python 3.11.7
+- Installs FFmpeg automatically via Nix
+- Sets up all required dependencies
+
+### Troubleshooting Railway Deployment
+
+If you encounter any issues:
+1. Verify that the `BOT_TOKEN` environment variable is set correctly
+2. Check Railway logs for any Python or FFmpeg-related errors
+3. Ensure the bot token is valid and active
+4. Try redeploying if the build fails
 
 ## Local Development
 
@@ -35,12 +46,17 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-3. Create a `.env` file with your bot token:
+3. Install FFmpeg:
+   - macOS: `brew install ffmpeg`
+   - Ubuntu: `sudo apt-get install ffmpeg`
+   - Windows: Download from [FFmpeg website](https://ffmpeg.org/download.html)
+
+4. Create a `.env` file with your bot token:
 ```
 BOT_TOKEN=your_bot_token_here
 ```
 
-4. Run the bot:
+5. Run the bot:
 ```bash
 python bot.py
 ```

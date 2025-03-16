@@ -778,22 +778,26 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         error_text = "Sorry, an error occurred while processing your request."
         await update.effective_message.reply_text(error_text)
 
-# Ensure required system packages are installed
 def ensure_ffmpeg():
     """Ensure ffmpeg is installed."""
     try:
+        # First try to run ffmpeg directly
         subprocess.run(['ffmpeg', '-version'], check=True, capture_output=True)
+        logger.info("FFmpeg is already installed")
     except (subprocess.CalledProcessError, FileNotFoundError):
-        try:
-            # Install ffmpeg on Railway
-            subprocess.run(['apt-get', 'update'], check=True)
-            subprocess.run(['apt-get', 'install', '-y', 'ffmpeg'], check=True)
-        except Exception as e:
-            logger.error(f"Failed to install ffmpeg: {e}")
-            raise
+        logger.warning("FFmpeg not found in PATH")
+        # In Railway's Nix environment, we should exit with an error
+        # since FFmpeg should be installed via Railway's configuration
+        logger.error("FFmpeg is required but not installed. Please add FFmpeg to Railway's environment variables.")
+        raise RuntimeError("FFmpeg is required but not installed")
 
 # Call ensure_ffmpeg at startup
-ensure_ffmpeg()
+try:
+    ensure_ffmpeg()
+except Exception as e:
+    logger.error(f"FFmpeg check failed: {e}")
+    # Continue anyway as FFmpeg might be available in PATH later
+    pass
 
 if __name__ == '__main__':
     main() 
