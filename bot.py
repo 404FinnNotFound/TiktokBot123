@@ -198,12 +198,15 @@ def crop_video(input_path: str) -> str:
 
 def add_border(input_path: str) -> str:
     """Add white borders to make video 9:16 while maintaining 5:7 content ratio."""
+    if not FFMPEG_PATH or not FFPROBE_PATH:
+        raise RuntimeError("FFmpeg/FFprobe paths not set")
+        
     output_path = os.path.join(os.path.dirname(input_path), "bordered_video.mp4")
     
     try:
         # Get video dimensions using ffprobe
         probe_cmd = [
-            'ffprobe',
+            FFPROBE_PATH,
             '-v', 'error',
             '-select_streams', 'v:0',
             '-show_entries', 'stream=width,height',
@@ -262,7 +265,7 @@ def add_border(input_path: str) -> str:
         logger.info(f"Final FFmpeg filter: {','.join(filter_complex)}")
         
         cmd = [
-            'ffmpeg',
+            FFMPEG_PATH,
             '-i', input_path,
             '-vf', ','.join(filter_complex),
             '-c:a', 'copy',
@@ -286,9 +289,12 @@ def add_border(input_path: str) -> str:
 
 def check_metadata(file_path: str) -> dict:
     """Check video metadata using FFprobe."""
+    if not FFPROBE_PATH:
+        raise RuntimeError("FFprobe path not set")
+        
     try:
         cmd = [
-            'ffprobe',
+            FFPROBE_PATH,
             '-v', 'quiet',
             '-print_format', 'json',
             '-show_format',
@@ -304,6 +310,9 @@ def check_metadata(file_path: str) -> dict:
 
 def modify_metadata(input_path: str, metadata: dict) -> str:
     """Modify video metadata using FFmpeg."""
+    if not FFMPEG_PATH:
+        raise RuntimeError("FFmpeg path not set")
+        
     output_path = os.path.join(os.path.dirname(input_path), "metadata_video.mp4")
     
     try:
@@ -313,7 +322,7 @@ def modify_metadata(input_path: str, metadata: dict) -> str:
             metadata_args.extend(['-metadata', f'{key}={value}'])
         
         cmd = [
-            'ffmpeg',
+            FFMPEG_PATH,
             '-i', input_path,
             '-c', 'copy'
         ] + metadata_args + [
@@ -509,6 +518,9 @@ def download_tiktok(url: str) -> str:
 
 def add_text_overlay(input_path: str, text: str) -> str:
     """Add text overlay to the video."""
+    if not FFMPEG_PATH:
+        raise RuntimeError("FFmpeg path not set")
+        
     output_path = os.path.join(os.path.dirname(input_path), "text_overlay.mp4")
     
     try:
@@ -521,7 +533,7 @@ def add_text_overlay(input_path: str, text: str) -> str:
         while len(remaining_text) > 50:
             # Find the last space before 56 characters to break at word boundaries
             break_point = remaining_text[:50].rstrip().rfind(' ')
-            if break_point == -1:  # No space found, force break at 56
+            if break_point == -1:  # No space found, force break at 50
                 break_point = 50
             formatted_text += remaining_text[:break_point] + '\n'
             remaining_text = remaining_text[break_point:].lstrip()
@@ -549,7 +561,7 @@ def add_text_overlay(input_path: str, text: str) -> str:
         filter_complex = f"drawtext=text='{escaped_text}':fontfile=/System/Library/Fonts/HelveticaNeue.ttc:fontsize=45:fontcolor=#0F1419:line_spacing=8:x={x_position}:y={y_position}:box=0"
         
         cmd = [
-            'ffmpeg',
+            FFMPEG_PATH,
             '-i', input_path,
             '-vf', filter_complex,
             '-c:a', 'copy',
