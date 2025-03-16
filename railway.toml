@@ -8,24 +8,13 @@ restartPolicyMaxRetries = 10
 
 [variables]
 PYTHON_VERSION = "3.11.7"
-NIXPACKS_PYTHON_VERSION = "3.11.7"
 
 [phases.setup]
-nixPkgs = [
-    "ffmpeg-full",
-    "python311",
-    "gcc",
-    "python311Packages.pip"
-]
+nixPkgs = ["ffmpeg-full", "python311"]
+aptPkgs = ["python3-pip", "python3-dev", "build-essential"]
 
 [phases.install]
-cmds = [
-    "python -m ensurepip --upgrade",
-    "python -m pip install --no-cache-dir --upgrade pip setuptools wheel",
-    "python -m pip install --no-cache-dir -r requirements.txt"
-]
+cmds = ["pip3 install -r requirements.txt"]
 
 [env]
-PATH = "/nix/var/nix/profiles/default/bin:/bin:/usr/bin:/usr/local/bin"
-LD_LIBRARY_PATH = "/lib:/usr/lib:/usr/local/lib:/nix/var/nix/profiles/default/lib"
-PYTHONPATH = "/nix/var/nix/profiles/default/lib/python3.11/site-packages" 
+PATH = "/nix/var/nix/profiles/default/bin:/usr/local/bin:/usr/bin:/bin" 
