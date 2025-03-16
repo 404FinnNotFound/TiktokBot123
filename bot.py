@@ -19,7 +19,10 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 # Bot token
-TOKEN = "7538731330:AAFSOY0g0vSaEGaFV1zat2Ll-6Aeh_dv49o"
+TOKEN = os.getenv("TOKEN")  # Get token from environment variables
+if TOKEN is None:
+    raise ValueError("Error: Telegram bot token not set in environment variables.")
+
 
 # Lock file path
 LOCK_FILE = "bot.lock"
