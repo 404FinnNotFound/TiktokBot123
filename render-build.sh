@@ -1,9 +1,11 @@
-#!/bin/bash
-set -eux
+#!/usr/bin/env bash
+# exit on error
+set -o errexit
 
-# Install FFmpeg in the Render environment
-curl -fsSL https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz | tar -xJ
-mkdir -p $HOME/bin
-mv ffmpeg-*-static/ffmpeg $HOME/bin/
-mv ffmpeg-*-static/ffprobe $HOME/bin/
-export PATH="$HOME/bin:$PATH"
+# Install system dependencies
+sudo apt-get update
+sudo apt-get install -y ffmpeg
+
+# Install Python dependencies
+python -m pip install --upgrade pip
+pip install -r requirements.txt

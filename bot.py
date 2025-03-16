@@ -12,6 +12,7 @@ import subprocess
 import json
 from datetime import datetime, timedelta
 import random
+import shutil
 
 # Configure logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -77,6 +78,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Hi! Send me a TikTok URL and I'll send you back the video without the watermark."
     )
 
+def check_ffmpeg():
+    """Check if FFmpeg is installed and accessible."""
+    try:
+        # Check ffmpeg version
+        result = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True)
+        logger.info(f"FFmpeg version: {result.stdout.split('\\n')[0]}")
+        
+        # Check ffprobe version
+        result = subprocess.run(['ffprobe', '-version'], capture_output=True, text=True)
+        logger.info(f"FFprobe version: {result.stdout.split('\\n')[0]}")
+        
+        return True
+    except Exception as e:
+        logger.error(f"FFmpeg check failed: {str(e)}")
+        return False
+
 def crop_video(input_path: str) -> str:
     """Crop video to target aspect ratio using FFmpeg."""
     output_path = os.path.join(os.path.dirname(input_path), "cropped_video.mp4")
@@ -92,6 +109,7 @@ def crop_video(input_path: str) -> str:
             input_path
         ]
         
+        logger.info(f"Running ffprobe command: {' '.join(probe_cmd)}")
         probe_output = subprocess.run(probe_cmd, capture_output=True, text=True, check=True)
         video_info = json.loads(probe_output.stdout)
         
@@ -121,21 +139,28 @@ def crop_video(input_path: str) -> str:
             'ffmpeg',
             '-i', input_path,
             '-vf', f'crop={new_width}:{new_height}:{x_offset}:{y_offset}',
-            '-c:a', 'copy',  # Copy audio stream without re-encoding
-            '-y',  # Overwrite output file if it exists
+            '-c:a', 'copy',
+            '-y',
             output_path
         ]
         
-        # Run FFmpeg
-        subprocess.run(cmd, check=True, capture_output=True)
+        logger.info(f"Running ffmpeg command: {' '.join(cmd)}")
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            logger.error(f"FFmpeg error output: {result.stderr}")
+            raise subprocess.CalledProcessError(result.returncode, cmd, result.stdout, result.stderr)
+        
+        if not os.path.exists(output_path):
+            raise Exception("FFmpeg did not create output file")
         
         # Remove original file
         os.remove(input_path)
         
         return output_path
     except subprocess.CalledProcessError as e:
-        logger.error(f"FFmpeg error: {e.stderr.decode() if e.stderr else str(e)}")
-        raise Exception("Failed to crop video")
+        logger.error(f"FFmpeg error: {e.stderr}")
+        raise Exception(f"Failed to crop video: {e.stderr}")
     except Exception as e:
         logger.error(f"Error cropping video: {e}")
         raise
@@ -155,6 +180,7 @@ def add_border(input_path: str) -> str:
             input_path
         ]
         
+        logger.info(f"Running ffprobe command: {' '.join(probe_cmd)}")
         probe_output = subprocess.run(probe_cmd, capture_output=True, text=True, check=True)
         video_info = json.loads(probe_output.stdout)
         input_width = int(video_info['streams'][0]['width'])
@@ -214,16 +240,23 @@ def add_border(input_path: str) -> str:
             output_path
         ]
         
-        # Run FFmpeg
-        subprocess.run(cmd, check=True, capture_output=True)
+        logger.info(f"Running ffmpeg command: {' '.join(cmd)}")
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            logger.error(f"FFmpeg error output: {result.stderr}")
+            raise subprocess.CalledProcessError(result.returncode, cmd, result.stdout, result.stderr)
+        
+        if not os.path.exists(output_path):
+            raise Exception("FFmpeg did not create output file")
         
         # Remove original file
         os.remove(input_path)
         
         return output_path
     except subprocess.CalledProcessError as e:
-        logger.error(f"FFmpeg error: {e.stderr.decode() if e.stderr else str(e)}")
-        raise Exception("Failed to add borders to video")
+        logger.error(f"FFmpeg error: {e.stderr}")
+        raise Exception(f"Failed to add borders: {e.stderr}")
     except Exception as e:
         logger.error(f"Error adding borders: {e}")
         raise
@@ -714,6 +747,11 @@ async def handle_caption(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 def main():
     """Start the bot."""
     try:
+        # Check FFmpeg installation
+        if not check_ffmpeg():
+            logger.error("FFmpeg is not properly installed. Please install FFmpeg first.")
+            return
+
         # Check for existing lock file
         if os.path.exists(LOCK_FILE):
             os.remove(LOCK_FILE)
