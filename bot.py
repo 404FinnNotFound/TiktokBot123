@@ -95,7 +95,7 @@ def ensure_ffmpeg():
                                      capture_output=True, 
                                      text=True)
                 logger.info(f"FFmpeg found at {ffmpeg_path}")
-                logger.info(f"FFmpeg version: {result.stdout.split('\\n')[0]}")
+                logger.info(f"FFmpeg version: {result.stdout.splitlines()[0]}")
                 FFMPEG_PATH = ffmpeg_path  # Update the global path
                 return  # FFmpeg found and working
             except (subprocess.CalledProcessError, FileNotFoundError):

@@ -3,8 +3,8 @@ builder = "nixpacks"
 
 [deploy]
 startCommand = "python bot.py"
-healthcheckPath = "/"
-healthcheckTimeout = 100
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 10
 
 [variables]
 NIXPACKS_PYTHON_VERSION = "3.11.7"
