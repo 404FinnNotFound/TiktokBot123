@@ -12,8 +12,16 @@ NIXPACKS_PYTHON_VERSION = "3.11.7"
 [phases.setup]
 nixPkgs = [
     "ffmpeg-full",
-    "python311"
+    "python311",
+    "gcc"
+]
+
+[phases.install]
+cmds = [
+    "python -m pip install --upgrade pip",
+    "pip install -r requirements.txt"
 ]
 
 [phases.setup.env]
-PATH = "/nix/var/nix/profiles/default/bin:/bin:/usr/bin:/usr/local/bin" 
+PATH = "/nix/var/nix/profiles/default/bin:/bin:/usr/bin:/usr/local/bin"
+LD_LIBRARY_PATH = "/lib:/usr/lib:/usr/local/lib:/nix/var/nix/profiles/default/lib" 

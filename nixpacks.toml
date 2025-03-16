@@ -1,0 +1,11 @@
+[phases.setup]
+aptPkgs = [
+    "ffmpeg",
+    "python3-pip"
+]
+
+[phases.install]
+cmds = ["python -m pip install --upgrade pip"]
+
+[start]
+cmd = "python bot.py" 
