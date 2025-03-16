@@ -12,8 +12,6 @@ import subprocess
 import json
 from datetime import datetime, timedelta
 import random
-import shutil
-from pathlib import Path
 
 # Configure logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -21,7 +19,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 # Bot token
-TOKEN = os.getenv("BOT_TOKEN", "7538731330:AAFSOY0g0vSaEGaFV1zat2Ll-6Aeh_dv49o")
+TOKEN = "7538731330:AAFSOY0g0vSaEGaFV1zat2Ll-6Aeh_dv49o"
 
 # Lock file path
 LOCK_FILE = "bot.lock"
@@ -52,9 +50,6 @@ META_FORMAT = "meta_format"
 # Store temporary video paths
 temp_videos: Dict[int, str] = {}
 
-FFMPEG_PATH = None  # Will be set by ensure_ffmpeg
-FFPROBE_PATH = None  # Will be set by ensure_ffmpeg
-
 def cleanup():
     """Clean up function to remove lock file on exit."""
     try:
@@ -79,68 +74,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Hi! Send me a TikTok URL and I'll send you back the video without the watermark."
     )
 
-def ensure_ffmpeg():
-    """Ensure ffmpeg and ffprobe are installed and accessible."""
-    global FFMPEG_PATH, FFPROBE_PATH
-    
-    try:
-        # Try to find ffmpeg and ffprobe using shutil.which first
-        ffmpeg = shutil.which('ffmpeg')
-        ffprobe = shutil.which('ffprobe')
-        
-        if ffmpeg and ffprobe:
-            FFMPEG_PATH = ffmpeg
-            FFPROBE_PATH = ffprobe
-            logger.info(f"Found FFmpeg at {FFMPEG_PATH}")
-            logger.info(f"Found FFprobe at {FFPROBE_PATH}")
-            return
-        
-        # Additional paths to check
-        possible_paths = [
-            '/nix/var/nix/profiles/default/bin',
-            '/opt/ffmpeg/bin',
-            '/usr/local/bin',
-            '/usr/bin',
-            '/bin'
-        ]
-        
-        # Check each path
-        for base_path in possible_paths:
-            ffmpeg_path = Path(base_path) / 'ffmpeg'
-            ffprobe_path = Path(base_path) / 'ffprobe'
-            
-            if ffmpeg_path.exists() and ffprobe_path.exists():
-                FFMPEG_PATH = str(ffmpeg_path)
-                FFPROBE_PATH = str(ffprobe_path)
-                logger.info(f"Found FFmpeg at {FFMPEG_PATH}")
-                logger.info(f"Found FFprobe at {FFPROBE_PATH}")
-                
-                # Test FFmpeg
-                result = subprocess.run([FFMPEG_PATH, '-version'], 
-                                     check=True, 
-                                     capture_output=True, 
-                                     text=True)
-                logger.info(f"FFmpeg version: {result.stdout.splitlines()[0]}")
-                return
-        
-        # If we get here, no FFmpeg was found
-        raise RuntimeError("FFmpeg/FFprobe not found in any standard location")
-        
-    except Exception as e:
-        logger.error(f"Error checking FFmpeg: {e}")
-        raise  # Re-raise the error as FFmpeg is required
-
 def crop_video(input_path: str) -> str:
     """Crop video to target aspect ratio using FFmpeg."""
-    if not FFMPEG_PATH or not FFPROBE_PATH:
-        raise RuntimeError("FFmpeg/FFprobe paths not set")
-        
     output_path = os.path.join(os.path.dirname(input_path), "cropped_video.mp4")
     
     try:
         # Get video dimensions using ffprobe
         probe_cmd = [
-            FFPROBE_PATH,
+            'ffprobe',
             '-v', 'error',
             '-select_streams', 'v:0',
             '-show_entries', 'stream=width,height',
@@ -174,11 +115,11 @@ def crop_video(input_path: str) -> str:
         
         # Construct FFmpeg command with crop
         cmd = [
-            FFMPEG_PATH,
+            'ffmpeg',
             '-i', input_path,
             '-vf', f'crop={new_width}:{new_height}:{x_offset}:{y_offset}',
-            '-c:a', 'copy',
-            '-y',
+            '-c:a', 'copy',  # Copy audio stream without re-encoding
+            '-y',  # Overwrite output file if it exists
             output_path
         ]
         
@@ -198,15 +139,12 @@ def crop_video(input_path: str) -> str:
 
 def add_border(input_path: str) -> str:
     """Add white borders to make video 9:16 while maintaining 5:7 content ratio."""
-    if not FFMPEG_PATH or not FFPROBE_PATH:
-        raise RuntimeError("FFmpeg/FFprobe paths not set")
-        
     output_path = os.path.join(os.path.dirname(input_path), "bordered_video.mp4")
     
     try:
         # Get video dimensions using ffprobe
         probe_cmd = [
-            FFPROBE_PATH,
+            'ffprobe',
             '-v', 'error',
             '-select_streams', 'v:0',
             '-show_entries', 'stream=width,height',
@@ -265,7 +203,7 @@ def add_border(input_path: str) -> str:
         logger.info(f"Final FFmpeg filter: {','.join(filter_complex)}")
         
         cmd = [
-            FFMPEG_PATH,
+            'ffmpeg',
             '-i', input_path,
             '-vf', ','.join(filter_complex),
             '-c:a', 'copy',
@@ -289,12 +227,9 @@ def add_border(input_path: str) -> str:
 
 def check_metadata(file_path: str) -> dict:
     """Check video metadata using FFprobe."""
-    if not FFPROBE_PATH:
-        raise RuntimeError("FFprobe path not set")
-        
     try:
         cmd = [
-            FFPROBE_PATH,
+            'ffprobe',
             '-v', 'quiet',
             '-print_format', 'json',
             '-show_format',
@@ -310,9 +245,6 @@ def check_metadata(file_path: str) -> dict:
 
 def modify_metadata(input_path: str, metadata: dict) -> str:
     """Modify video metadata using FFmpeg."""
-    if not FFMPEG_PATH:
-        raise RuntimeError("FFmpeg path not set")
-        
     output_path = os.path.join(os.path.dirname(input_path), "metadata_video.mp4")
     
     try:
@@ -322,7 +254,7 @@ def modify_metadata(input_path: str, metadata: dict) -> str:
             metadata_args.extend(['-metadata', f'{key}={value}'])
         
         cmd = [
-            FFMPEG_PATH,
+            'ffmpeg',
             '-i', input_path,
             '-c', 'copy'
         ] + metadata_args + [
@@ -518,9 +450,6 @@ def download_tiktok(url: str) -> str:
 
 def add_text_overlay(input_path: str, text: str) -> str:
     """Add text overlay to the video."""
-    if not FFMPEG_PATH:
-        raise RuntimeError("FFmpeg path not set")
-        
     output_path = os.path.join(os.path.dirname(input_path), "text_overlay.mp4")
     
     try:
@@ -533,7 +462,7 @@ def add_text_overlay(input_path: str, text: str) -> str:
         while len(remaining_text) > 50:
             # Find the last space before 56 characters to break at word boundaries
             break_point = remaining_text[:50].rstrip().rfind(' ')
-            if break_point == -1:  # No space found, force break at 50
+            if break_point == -1:  # No space found, force break at 56
                 break_point = 50
             formatted_text += remaining_text[:break_point] + '\n'
             remaining_text = remaining_text[break_point:].lstrip()
@@ -561,7 +490,7 @@ def add_text_overlay(input_path: str, text: str) -> str:
         filter_complex = f"drawtext=text='{escaped_text}':fontfile=/System/Library/Fonts/HelveticaNeue.ttc:fontsize=45:fontcolor=#0F1419:line_spacing=8:x={x_position}:y={y_position}:box=0"
         
         cmd = [
-            FFMPEG_PATH,
+            'ffmpeg',
             '-i', input_path,
             '-vf', filter_complex,
             '-c:a', 'copy',
@@ -848,9 +777,6 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if update and update.effective_message:
         error_text = "Sorry, an error occurred while processing your request."
         await update.effective_message.reply_text(error_text)
-
-# Call ensure_ffmpeg at startup
-ensure_ffmpeg()
 
 if __name__ == '__main__':
     main() 
