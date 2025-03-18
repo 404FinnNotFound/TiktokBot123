@@ -18,9 +18,10 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
                    level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Bot token
-TOKEN = "7538731330:AAFSOY0g0vSaEGaFV1zat2Ll-6Aeh_dv49o"
-
+# Bot token from environment variable
+TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+if not TOKEN:
+    raise ValueError("No token found! Set your bot token in the TELEGRAM_BOT_TOKEN environment variable.")
 
 # Lock file path
 LOCK_FILE = "bot.lock"
@@ -80,9 +81,10 @@ def crop_video(input_path: str) -> str:
     output_path = os.path.join(os.path.dirname(input_path), "cropped_video.mp4")
     
     try:
+        logger.info(f"Starting crop_video for: {input_path}")
         # Get video dimensions using ffprobe
         probe_cmd = [
-            'ffprobe',
+            '/usr/bin/ffprobe',
             '-v', 'error',
             '-select_streams', 'v:0',
             '-show_entries', 'stream=width,height',
@@ -90,8 +92,10 @@ def crop_video(input_path: str) -> str:
             input_path
         ]
         
+        logger.info(f"Running ffprobe command: {' '.join(probe_cmd)}")
         probe_output = subprocess.run(probe_cmd, capture_output=True, text=True, check=True)
         video_info = json.loads(probe_output.stdout)
+        logger.info(f"Video info: {video_info}")
         
         # Extract current dimensions
         current_width = int(video_info['streams'][0]['width'])
@@ -114,26 +118,33 @@ def crop_video(input_path: str) -> str:
             x_offset = 0
             y_offset = (current_height - new_height) // 2
         
+        logger.info(f"Crop dimensions: {new_width}x{new_height} at offset {x_offset},{y_offset}")
+        
         # Construct FFmpeg command with crop
         cmd = [
-            'ffmpeg',
+            '/usr/bin/ffmpeg',
             '-i', input_path,
             '-vf', f'crop={new_width}:{new_height}:{x_offset}:{y_offset}',
-            '-c:a', 'copy',  # Copy audio stream without re-encoding
-            '-y',  # Overwrite output file if it exists
+            '-c:a', 'copy',
+            '-y',
             output_path
         ]
         
-        # Run FFmpeg
-        subprocess.run(cmd, check=True, capture_output=True)
+        logger.info(f"Running ffmpeg command: {' '.join(cmd)}")
+        # Run FFmpeg with error output capture
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        logger.info(f"FFmpeg output: {result.stdout}")
+        if result.stderr:
+            logger.warning(f"FFmpeg stderr: {result.stderr}")
         
         # Remove original file
         os.remove(input_path)
+        logger.info(f"Crop completed successfully. Output: {output_path}")
         
         return output_path
     except subprocess.CalledProcessError as e:
-        logger.error(f"FFmpeg error: {e.stderr.decode() if e.stderr else str(e)}")
-        raise Exception("Failed to crop video")
+        logger.error(f"FFmpeg error: {e.stderr}")
+        raise Exception(f"Failed to crop video: {e.stderr}")
     except Exception as e:
         logger.error(f"Error cropping video: {e}")
         raise
@@ -145,7 +156,7 @@ def add_border(input_path: str) -> str:
     try:
         # Get video dimensions using ffprobe
         probe_cmd = [
-            'ffprobe',
+            '/usr/bin/ffprobe',
             '-v', 'error',
             '-select_streams', 'v:0',
             '-show_entries', 'stream=width,height',
@@ -204,7 +215,7 @@ def add_border(input_path: str) -> str:
         logger.info(f"Final FFmpeg filter: {','.join(filter_complex)}")
         
         cmd = [
-            'ffmpeg',
+            '/usr/bin/ffmpeg',
             '-i', input_path,
             '-vf', ','.join(filter_complex),
             '-c:a', 'copy',
@@ -230,7 +241,7 @@ def check_metadata(file_path: str) -> dict:
     """Check video metadata using FFprobe."""
     try:
         cmd = [
-            'ffprobe',
+            '/usr/bin/ffprobe',
             '-v', 'quiet',
             '-print_format', 'json',
             '-show_format',
@@ -255,7 +266,7 @@ def modify_metadata(input_path: str, metadata: dict) -> str:
             metadata_args.extend(['-metadata', f'{key}={value}'])
         
         cmd = [
-            'ffmpeg',
+            '/usr/bin/ffmpeg',
             '-i', input_path,
             '-c', 'copy'
         ] + metadata_args + [
@@ -405,6 +416,8 @@ def download_tiktok(url: str) -> str:
     temp_dir = tempfile.mkdtemp()
     output_template = os.path.join(temp_dir, "video.%(ext)s")
     
+    logger.info(f"Starting download from URL: {url}")
+    
     ydl_opts = {
         'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
         'outtmpl': output_template,
@@ -432,18 +445,24 @@ def download_tiktok(url: str) -> str:
     
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         try:
-            # Extract video info and download
+            logger.info("Extracting video info...")
             info = ydl.extract_info(url, download=True)
             downloaded_path = os.path.join(temp_dir, f"video.mp4")
+            logger.info(f"Video downloaded to: {downloaded_path}")
             
-            # Process metadata
+            logger.info("Processing metadata...")
             processed_path = process_video_metadata(downloaded_path, info)
+            logger.info(f"Metadata processed, file at: {processed_path}")
             
-            # First crop to 5:7 ratio
+            logger.info("Cropping video to 5:7 ratio...")
             cropped_path = crop_video(processed_path)
+            logger.info(f"Video cropped, file at: {cropped_path}")
             
-            # Then add white borders to make it 9:16
-            return add_border(cropped_path)
+            logger.info("Adding white borders...")
+            final_path = add_border(cropped_path)
+            logger.info(f"Borders added, final file at: {final_path}")
+            
+            return final_path
             
         except Exception as e:
             logger.error(f"Download error: {str(e)}")
@@ -487,11 +506,14 @@ def add_text_overlay(input_path: str, text: str) -> str:
         # Escape special characters in text
         escaped_text = formatted_text.replace("'", "'\\\\\\''").replace(':', '\\:').replace('=', '\\=')
         
+        # Use Liberation Sans font (similar to Helvetica)
+        font_path = '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf'
+        
         # Construct FFmpeg command with text overlay
-        filter_complex = f"drawtext=text='{escaped_text}':fontfile=/System/Library/Fonts/HelveticaNeue.ttc:fontsize=45:fontcolor=#0F1419:line_spacing=8:x={x_position}:y={y_position}:box=0"
+        filter_complex = f"drawtext=text='{escaped_text}':fontfile={font_path}:fontsize=45:fontcolor=#0F1419:line_spacing=8:x={x_position}:y={y_position}:box=0"
         
         cmd = [
-            'ffmpeg',
+            '/usr/bin/ffmpeg',
             '-i', input_path,
             '-vf', filter_complex,
             '-c:a', 'copy',
@@ -556,9 +578,11 @@ async def handle_format_choice(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.answer()
     
     try:
+        logger.info(f"Format choice received: {query.data}")
         # Get the stored URL
         url = context.user_data.get('tiktok_url')
         if not url:
+            logger.error("No URL found in context")
             await query.message.edit_text("Sorry, something went wrong. Please send the TikTok URL again.")
             return ConversationHandler.END
         
@@ -567,6 +591,7 @@ async def handle_format_choice(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data['status_message'] = query.message
         
         if query.data == DOWNLOAD_ONLY:
+            logger.info("Processing download only format")
             # Process video without borders
             try:
                 video_path = download_tiktok_no_border(url)
@@ -577,13 +602,16 @@ async def handle_format_choice(update: Update, context: ContextTypes.DEFAULT_TYP
                 return ConversationHandler.END
                 
             except Exception as e:
+                logger.error(f"Error in download only: {str(e)}")
                 await handle_download_error(query.message, e)
                 return ConversationHandler.END
         
         elif query.data == META_FORMAT:
+            logger.info("Processing meta format")
             # Process video with borders
             try:
                 video_path = download_tiktok(url)
+                logger.info(f"Video processed successfully: {video_path}")
                 temp_videos[update.effective_user.id] = video_path
                 
                 # Ask for caption
@@ -594,10 +622,12 @@ async def handle_format_choice(update: Update, context: ContextTypes.DEFAULT_TYP
                 return WAITING_FOR_CAPTION
                 
             except Exception as e:
+                logger.error(f"Error in meta format: {str(e)}")
                 await handle_download_error(query.message, e)
                 return ConversationHandler.END
     
     except Exception as e:
+        logger.error(f"Error in handle_format_choice: {str(e)}")
         await query.message.edit_text(f"An error occurred: {str(e)}")
         return ConversationHandler.END
 

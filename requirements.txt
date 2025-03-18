@@ -1,5 +1,2 @@
-python-telegram-bot==20.7
-yt-dlp==2024.3.10
-moviepy==1.0.3
-Pillow==10.2.0
-python-dotenv==1.0.1 
+python-telegram-bot>=20.7
+yt-dlp>=2024.3.10
