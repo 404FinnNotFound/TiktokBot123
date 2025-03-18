@@ -23,16 +23,16 @@ A Telegram bot that downloads TikTok videos without watermarks and can add custo
    # Go to Google Cloud Console
    # Compute Engine > VM Instances > Create Instance
    Name: small-20250317-064004 (or any name you prefer)
-   Region: us-central1
-   Zone: us-central1-a
-   Machine type: e2-micro (2 vCPU, 1 GB memory)
+   Region: us-central1 (Or your region)
+   Zone: us-central1-a (Your zone)
+   Machine type: e2-custom-6-3072 (6 vCPUs, 3 GB Memory) (~1min TAT) 
    Boot disk: Ubuntu 20.04 LTS (10GB)
    Allow HTTP/HTTPS traffic: Yes
    ```
 
 2. Connect to your VM:
    ```bash
-   gcloud compute ssh YOUR_INSTANCE_NAME --zone=us-central1-a
+   gcloud compute ssh YOUR_INSTANCE_NAME --zone=us-central1-a (Change with your zone) 
    ```
 
 3. Install required system packages:
